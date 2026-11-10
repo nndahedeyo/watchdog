@@ -28,7 +28,7 @@ EVM = {
     "bsc": {"rpc": ["https://bsc-rpc.publicnode.com", "https://binance.llamarpc.com", "https://bsc-dataseed.bnbchain.org"], "sym": "BNB", "scan": "https://bscscan.com", "chunk": 5000, "lookback": 10000},
 }
 SOLANA_RPC = ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]
-SPL_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PcEb5Ui8Wj2Ux8F"]
+SPL_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]
 BTC_API = "https://mempool.space/api/address/"
 NTFY = "https://ntfy.sh/"
 HEARTBEAT_DAYS = 7
@@ -115,7 +115,7 @@ class Watchdog:
 
     def rpc(self, urls, method, params):
         """取得元を順に試し、混み合っていれば少し待ってやり直す。"""
-        last = None
+        first = None
         for attempt in range(3):
             for url in ([urls] if isinstance(urls, str) else urls):
                 if self.http is http:
@@ -126,10 +126,10 @@ class Watchdog:
                         raise RuntimeError(str(j["error"].get("message", "rpc error"))[:120])
                     return j["result"]
                 except Exception as e:
-                    last = e
+                    first = first or e
             if self.http is http:
                 time.sleep(5 * (attempt + 1))
-        raise last
+        raise first
 
     def logs(self, urls, lo, hi, topics):
         """範囲が広すぎて断られたら、半分ずつに分けて取り直す。"""
@@ -175,7 +175,10 @@ class Watchdog:
                     amt = self.t["unlimited"] if val >= MAX_UINT // 2 else self.t["some"]
                     self.say("approve", 5, label=label, chain=chain, spender=short(spender), token=short(log["address"]), amt=amt)
             out_n += len(self.logs(c["rpc"], lo, hi, [TRANSFER, topic]))
-            in_n += len(self.logs(c["rpc"], lo, hi, [TRANSFER, None, topic]))
+            try:  # 迷惑な着金が多すぎるアドレスでは数えきれないことがある。見張りの本体は止めない
+                in_n += len(self.logs(c["rpc"], lo, hi, [TRANSFER, None, topic]))
+            except Exception:
+                pass
         if out_n:
             self.say("out", 5, label=label, chain=chain, n=out_n)
         if in_n:
@@ -273,10 +276,10 @@ def ntfy_sender(topic, net=http):
 def selftest():
     """公開されている有名なアドレスで、各チェーンのデータが取れるかだけを確かめる（通知は送らない）。"""
     lines = "\n".join([
-        "ethereum 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 test",
-        "arbitrum 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 test",
-        "base 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 test",
-        "bsc 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 test",
+        "ethereum 0x0000000000000000000000000000000000000001 test",
+        "arbitrum 0x0000000000000000000000000000000000000001 test",
+        "base 0x0000000000000000000000000000000000000001 test",
+        "bsc 0x0000000000000000000000000000000000000001 test",
         "btc 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa test",
         "solana 11111111111111111111111111111111 test",
     ])
