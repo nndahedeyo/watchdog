@@ -1,0 +1,41 @@
+name: selftest
+
+# プログラムが変わったときに、各チェーンのデータが本当に取れるかを、公開されている有名なアドレスで確かめる。
+# 結果は selftest ブランチに書く。通知は送らない。
+on:
+  push:
+    branches: [main]
+    paths: ["watchdog/**", ".github/workflows/selftest.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  selftest:
+    if: github.repository == 'nndahedeyo/watchdog'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Offline tests
+        run: python tests/test_check.py
+      - name: Live data sources
+        run: python watchdog/check.py --selftest || echo "SELFTEST_FAILED=1" >> "$GITHUB_ENV"
+      - name: Record result
+        run: |
+          cp selftest/result.txt /tmp/result.txt
+          git config user.name "watchdog-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --orphan selftest
+          git rm -rf --quiet . || true
+          cp /tmp/result.txt result.txt
+          git add result.txt
+          git commit -m "selftest $(date -u +%Y-%m-%dT%H:%M)"
+          git push -f origin selftest
+      - name: Fail if a data source failed
+        if: env.SELFTEST_FAILED == '1'
+        run: exit 1

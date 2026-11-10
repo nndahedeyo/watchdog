@@ -1,0 +1,44 @@
+name: watch
+
+# 1時間に1回、登録したアドレスを確かめる。
+# 元の公開リポジトリ（ひな形）では動かさない。自分用のコピーでだけ動く。
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    if: github.repository != 'nndahedeyo/watchdog'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore last state
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: watchdog-state-${{ github.run_id }}
+          restore-keys: watchdog-state-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check addresses
+        env:
+          WATCHDOG_ADDRESSES: ${{ secrets.WATCHDOG_ADDRESSES }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          WATCHDOG_LANG: ${{ vars.WATCHDOG_LANG || 'ja' }}
+        run: python watchdog/check.py
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: watchdog-state-${{ github.run_id }}
