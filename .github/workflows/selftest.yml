@@ -27,7 +27,7 @@ jobs:
         run: python watchdog/check.py --selftest || echo "SELFTEST_FAILED=1" >> "$GITHUB_ENV"
       - name: Record result
         run: |
-          cp selftest/result.txt /tmp/result.txt
+          if [ -f selftest/result.txt ]; then cp selftest/result.txt /tmp/result.txt; else echo "selftest crashed before writing a result" > /tmp/result.txt; fi
           git config user.name "watchdog-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch --orphan selftest

@@ -16,6 +16,8 @@ class Net:
         self.toks = [{"pubkey": "acc1", "account": {"data": {"parsed": {"info": {"mint": "MintX" * 8, "tokenAmount": {"amount": "1000"}}}}}}]
 
     def __call__(self, url, body=None, headers=None):
+        if not body:
+            return self.btc
         if url.startswith(check.BTC_API):
             return self.btc
         m, p = body["method"], body["params"]

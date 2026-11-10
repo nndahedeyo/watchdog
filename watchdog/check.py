@@ -22,12 +22,12 @@ APPROVAL_ALL = "0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c
 MAX_UINT = (1 << 256) - 1
 
 EVM = {
-    "ethereum": {"rpc": "https://ethereum-rpc.publicnode.com", "sym": "ETH", "scan": "https://etherscan.io", "chunk": 2000, "lookback": 2000},
-    "arbitrum": {"rpc": "https://arbitrum-one-rpc.publicnode.com", "sym": "ETH", "scan": "https://arbiscan.io", "chunk": 10000, "lookback": 40000},
-    "base": {"rpc": "https://base-rpc.publicnode.com", "sym": "ETH", "scan": "https://basescan.org", "chunk": 5000, "lookback": 10000},
-    "bsc": {"rpc": "https://bsc-rpc.publicnode.com", "sym": "BNB", "scan": "https://bscscan.com", "chunk": 5000, "lookback": 10000},
+    "ethereum": {"rpc": ["https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com"], "sym": "ETH", "scan": "https://etherscan.io", "chunk": 2000, "lookback": 2000},
+    "arbitrum": {"rpc": ["https://arbitrum-one-rpc.publicnode.com", "https://arb1.arbitrum.io/rpc"], "sym": "ETH", "scan": "https://arbiscan.io", "chunk": 10000, "lookback": 40000},
+    "base": {"rpc": ["https://base-rpc.publicnode.com", "https://mainnet.base.org"], "sym": "ETH", "scan": "https://basescan.org", "chunk": 5000, "lookback": 10000},
+    "bsc": {"rpc": ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed.bnbchain.org"], "sym": "BNB", "scan": "https://bscscan.com", "chunk": 5000, "lookback": 10000},
 }
-SOLANA_RPC = "https://api.mainnet-beta.solana.com"
+SOLANA_RPC = ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]
 SPL_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PcEb5Ui8Wj2Ux8F"]
 BTC_API = "https://mempool.space/api/address/"
 NTFY = "https://ntfy.sh/"
@@ -113,11 +113,31 @@ class Watchdog:
         title, body = self.t[key]
         self.notify(title, body.format(**kw), prio)
 
-    def rpc(self, url, method, params):
-        j = self.http(url, {"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
-        if j.get("error"):
-            raise RuntimeError(j["error"].get("message", "rpc error"))
-        return j["result"]
+    def rpc(self, urls, method, params):
+        """取得元を順に試し、混み合っていれば少し待ってやり直す。"""
+        last = None
+        for attempt in range(2):
+            for url in ([urls] if isinstance(urls, str) else urls):
+                try:
+                    j = self.http(url, {"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+                    if j.get("error"):
+                        raise RuntimeError(str(j["error"].get("message", "rpc error"))[:120])
+                    return j["result"]
+                except Exception as e:
+                    last = e
+            if self.http is http:
+                time.sleep(3)
+        raise last
+
+    def logs(self, urls, lo, hi, topics):
+        """範囲が広すぎて断られたら、半分ずつに分けて取り直す。"""
+        try:
+            return self.rpc(urls, "eth_getLogs", [{"fromBlock": hex(lo), "toBlock": hex(hi), "topics": topics}])
+        except Exception:
+            if hi - lo < 50:
+                raise
+            mid = (lo + hi) // 2
+            return self.logs(urls, lo, mid, topics) + self.logs(urls, mid + 1, hi, topics)
 
     # ---- EVM ----
     def check_evm(self, chain, addr, label, prev):
@@ -141,8 +161,7 @@ class Watchdog:
         out_n = in_n = 0
         for lo in range(start, latest + 1, c["chunk"]):
             hi = min(lo + c["chunk"] - 1, latest)
-            rng = {"fromBlock": hex(lo), "toBlock": hex(hi)}
-            for log in self.rpc(c["rpc"], "eth_getLogs", [dict(rng, topics=[[APPROVAL, APPROVAL_ALL], topic])]):
+            for log in self.logs(c["rpc"], lo, hi, [[APPROVAL, APPROVAL_ALL], topic]):
                 spender = "0x" + log["topics"][2][-40:] if len(log["topics"]) > 2 else "?"
                 if log["topics"][0] == APPROVAL_ALL:
                     if int(log.get("data") or "0x0", 16):
@@ -153,8 +172,8 @@ class Watchdog:
                 if val:
                     amt = self.t["unlimited"] if val >= MAX_UINT // 2 else self.t["some"]
                     self.say("approve", 5, label=label, chain=chain, spender=short(spender), token=short(log["address"]), amt=amt)
-            out_n += len(self.rpc(c["rpc"], "eth_getLogs", [dict(rng, topics=[TRANSFER, topic])]))
-            in_n += len(self.rpc(c["rpc"], "eth_getLogs", [dict(rng, topics=[TRANSFER, None, topic])]))
+            out_n += len(self.logs(c["rpc"], lo, hi, [TRANSFER, topic]))
+            in_n += len(self.logs(c["rpc"], lo, hi, [TRANSFER, None, topic]))
         if out_n:
             self.say("out", 5, label=label, chain=chain, n=out_n)
         if in_n:
