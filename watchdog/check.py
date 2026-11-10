@@ -24,8 +24,8 @@ MAX_UINT = (1 << 256) - 1
 EVM = {
     "ethereum": {"rpc": ["https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com"], "sym": "ETH", "scan": "https://etherscan.io", "chunk": 2000, "lookback": 2000},
     "arbitrum": {"rpc": ["https://arbitrum-one-rpc.publicnode.com", "https://arb1.arbitrum.io/rpc"], "sym": "ETH", "scan": "https://arbiscan.io", "chunk": 10000, "lookback": 40000},
-    "base": {"rpc": ["https://base-rpc.publicnode.com", "https://mainnet.base.org", "https://base.llamarpc.com"], "sym": "ETH", "scan": "https://basescan.org", "chunk": 5000, "lookback": 10000},
-    "bsc": {"rpc": ["https://bsc-rpc.publicnode.com", "https://binance.llamarpc.com", "https://bsc-dataseed.bnbchain.org"], "sym": "BNB", "scan": "https://bscscan.com", "chunk": 5000, "lookback": 10000},
+    "base": {"rpc": ["https://base-rpc.publicnode.com", "https://base.drpc.org", "https://mainnet.base.org"], "sym": "ETH", "scan": "https://basescan.org", "chunk": 5000, "lookback": 10000},
+    "bsc": {"rpc": ["https://bsc-rpc.publicnode.com", "https://bsc.drpc.org", "https://bsc-dataseed.bnbchain.org"], "sym": "BNB", "scan": "https://bscscan.com", "chunk": 5000, "lookback": 10000},
 }
 SOLANA_RPC = ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]
 SPL_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]
