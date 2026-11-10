@@ -91,7 +91,8 @@ def fmt(v, dec):
 
 
 class Watchdog:
-    def __init__(self, lines, lang, state, notify, net=None):
+    def __init__(self, lines, lang, state, notify, net=None, verbose=False):
+        self.verbose = verbose
         self.t = T.get(lang, T["ja"])
         self.state = state
         self.notify = notify
@@ -218,6 +219,8 @@ class Watchdog:
             except Exception as e:
                 rec["fails"] = rec.get("fails", 0) + 1
                 print(f"check failed ({chain}): {type(e).__name__}")
+                if self.verbose:
+                    rec["err"] = f"{type(e).__name__}: {e}"[:300]
                 if rec["fails"] == FAIL_ALERT_AFTER:
                     self.say("fail", 3, label=label, chain=chain, n=rec["fails"])
             addrs[key] = rec
@@ -258,12 +261,12 @@ def selftest():
     ])
     state = {}
     for _ in range(2):  # 1回目で基準を作り、2回目で差分の確認（ログの取得）まで動かす
-        Watchdog(lines, "en", state, lambda t, b, p: print("would notify:", t)).run()
-    rows = [f"{k.split(':')[0]}: {'OK' if v.get('fails', 0) == 0 and 's' in v else 'FAIL'}" for k, v in state["addrs"].items()]
+        Watchdog(lines, "en", state, lambda t, b, p: print("would notify:", t), verbose=True).run()
+    rows = [f"{k.split(':')[0]}: {'OK' if v.get('fails', 0) == 0 and 's' in v else 'FAIL ' + v.get('err', '')}" for k, v in state["addrs"].items()]
     Path("selftest").mkdir(exist_ok=True)
     Path("selftest/result.txt").write_text(time.strftime("%Y-%m-%d %H:%M UTC\n", time.gmtime()) + "\n".join(rows) + "\n")
     print("\n".join(rows))
-    return all(r.endswith("OK") for r in rows)
+    return all(r.endswith(": OK") for r in rows)
 
 
 def main():
