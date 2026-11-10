@@ -24,8 +24,8 @@ MAX_UINT = (1 << 256) - 1
 EVM = {
     "ethereum": {"rpc": ["https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com"], "sym": "ETH", "scan": "https://etherscan.io", "chunk": 2000, "lookback": 2000},
     "arbitrum": {"rpc": ["https://arbitrum-one-rpc.publicnode.com", "https://arb1.arbitrum.io/rpc"], "sym": "ETH", "scan": "https://arbiscan.io", "chunk": 10000, "lookback": 40000},
-    "base": {"rpc": ["https://base-rpc.publicnode.com", "https://mainnet.base.org"], "sym": "ETH", "scan": "https://basescan.org", "chunk": 5000, "lookback": 10000},
-    "bsc": {"rpc": ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed.bnbchain.org"], "sym": "BNB", "scan": "https://bscscan.com", "chunk": 5000, "lookback": 10000},
+    "base": {"rpc": ["https://base-rpc.publicnode.com", "https://mainnet.base.org", "https://base.llamarpc.com"], "sym": "ETH", "scan": "https://basescan.org", "chunk": 5000, "lookback": 10000},
+    "bsc": {"rpc": ["https://bsc-rpc.publicnode.com", "https://binance.llamarpc.com", "https://bsc-dataseed.bnbchain.org"], "sym": "BNB", "scan": "https://bscscan.com", "chunk": 5000, "lookback": 10000},
 }
 SOLANA_RPC = ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]
 SPL_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PcEb5Ui8Wj2Ux8F"]
@@ -116,8 +116,10 @@ class Watchdog:
     def rpc(self, urls, method, params):
         """取得元を順に試し、混み合っていれば少し待ってやり直す。"""
         last = None
-        for attempt in range(2):
+        for attempt in range(3):
             for url in ([urls] if isinstance(urls, str) else urls):
+                if self.http is http:
+                    time.sleep(0.25)  # 公開ノードに負担をかけない
                 try:
                     j = self.http(url, {"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
                     if j.get("error"):
@@ -126,7 +128,7 @@ class Watchdog:
                 except Exception as e:
                     last = e
             if self.http is http:
-                time.sleep(3)
+                time.sleep(5 * (attempt + 1))
         raise last
 
     def logs(self, urls, lo, hi, topics):
@@ -276,7 +278,7 @@ def selftest():
         "base 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 test",
         "bsc 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 test",
         "btc 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa test",
-        "solana Vote111111111111111111111111111111111111111 test",
+        "solana 11111111111111111111111111111111 test",
     ])
     state = {}
     for _ in range(2):  # 1回目で基準を作り、2回目で差分の確認（ログの取得）まで動かす
