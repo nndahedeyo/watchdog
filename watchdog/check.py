@@ -147,8 +147,9 @@ class Watchdog:
         """範囲が広すぎて断られたら、半分ずつに分けて取り直す。"""
         try:
             return self.rpc(urls, "eth_getLogs", [{"fromBlock": hex(lo), "toBlock": hex(hi), "topics": topics}])
-        except Exception:
-            if hi - lo < 50:
+        except Exception as e:
+            msg = str(e).lower()
+            if hi - lo < 50 or not any(w in msg for w in ("range", "limit", "too many", "exceed", "results", "large")):
                 raise
             mid = (lo + hi) // 2
             return self.logs(urls, lo, mid, topics) + self.logs(urls, mid + 1, hi, topics)
@@ -290,7 +291,11 @@ class Watchdog:
             self.say("shielded", 3, line=line)
         first = not st.get("started")
         ok = 0
+        deadline = time.time() + 7 * 60  # 混雑で長引いても、1回の確認は7分で切り上げる
         for chain, addr, label in self.items:
+            if time.time() > deadline:
+                print("time limit reached; remaining addresses will be checked next hour")
+                break
             key = f"{chain}:{addr.lower()}"
             rec = addrs.get(key, {})
             fn = self.check_evm if chain in EVM else {"btc": self.check_btc, "solana": self.check_solana, "near": self.check_near, "zec": self.check_zec, "kaspa": self.check_kaspa}[chain]
