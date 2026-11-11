@@ -30,6 +30,9 @@ EVM = {
 SOLANA_RPC = ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]
 SPL_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]
 BTC_API = "https://mempool.space/api/address/"
+NEAR_RPC = ["https://rpc.mainnet.fastnear.com", "https://rpc.mainnet.near.org"]
+ZEC_API = "https://api.blockchair.com/zcash/dashboards/address/"
+KAS_API = "https://api.kaspa.org"
 NTFY = "https://ntfy.sh/"
 HEARTBEAT_DAYS = 7
 FAIL_ALERT_AFTER = 6  # 6回（約6時間）続けて確認できなければ知らせる
@@ -49,6 +52,9 @@ T = {
         "pending": ("送金が処理待ちです", "{label}（BTC）から送金が処理待ちになっています。身に覚えがなければ、すぐに確認してください。"),
         "sol_deleg": ("トークンの操作が委任されました", "{label}（Solana）のトークン {mint} を、相手 {to} が動かせるようになりました。覚えがなければ、取り消してください。"),
         "sol_drop": ("トークンが減りました", "{label}（Solana）のトークン {mint} が減りました。身に覚えがなければ、すぐに確認してください。"),
+        "near_full": ("フルアクセスの鍵が追加されました", "{label}（NEAR）に、すべての操作ができる鍵が追加されました。覚えがなければ、乗っ取られています。すぐに資産を別の安全なアカウントへ移してください。"),
+        "near_fn": ("操作用の鍵が追加されました", "{label}（NEAR）に、アプリ用の限定された鍵が追加されました（相手：{to}）。覚えがなければ、取り消してください。"),
+        "shielded": ("見張れないアドレスです", "{line}：ZECの秘匿アドレス（z・u）は外から残高を読めないため、見張れません。t1・t3で始まる透明アドレスを登録してください。"),
         "fail": ("確認できていません", "{label}（{chain}）を{n}回続けて確認できませんでした。データの取得元が混み合っている可能性があります。"),
         "bad": ("設定を読めない行があります", "{n}行目：{line}（チェーン アドレス 名前 の形で書いてください）"),
     },
@@ -66,6 +72,9 @@ T = {
         "pending": ("Outgoing BTC pending", "A payment from {label} (BTC) is pending. If this wasn't you, check now."),
         "sol_deleg": ("Token delegation set", "{to} can now move token {mint} in {label} (Solana). If you don't recognize it, revoke it."),
         "sol_drop": ("Token balance dropped", "Token {mint} in {label} (Solana) dropped. If this wasn't you, check now."),
+        "near_full": ("Full-access key added", "A key with full control was added to {label} (NEAR). If this wasn't you, the account is compromised. Move funds to a safe account now."),
+        "near_fn": ("App key added", "A limited app key was added to {label} (NEAR), for {to}. If you don't recognize it, remove it."),
+        "shielded": ("Can't watch this address", "{line}: shielded ZEC addresses (z, u) can't be read from outside. Register a transparent t1 or t3 address."),
         "fail": ("Couldn't check", "{label} ({chain}) couldn't be checked {n} times in a row. The data source may be busy."),
         "bad": ("Unreadable setting", "Line {n}: {line} (use: chain address name)"),
     },
@@ -97,14 +106,17 @@ class Watchdog:
         self.state = state
         self.notify = notify
         self.http = net or http
-        self.items, self.bad = [], []
+        self.items, self.bad, self.shielded = [], [], []
         for i, raw in enumerate(lines.splitlines(), 1):
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
             parts = line.split(None, 2)
             chain = parts[0].lower() if parts else ""
-            if len(parts) < 2 or chain not in (*EVM, "btc", "solana"):
+            if chain == "zec" and len(parts) > 1 and parts[1][:1] in ("z", "u"):
+                self.shielded.append(line[:40])
+                continue
+            if len(parts) < 2 or chain not in (*EVM, "btc", "solana", "near", "zec", "kaspa"):
                 self.bad.append((i, line[:40]))
                 continue
             self.items.append((chain, parts[1], parts[2] if len(parts) > 2 else short(parts[1])))
@@ -225,17 +237,63 @@ class Watchdog:
                 self.say("sol_drop", 5, label=label, mint=short(p["mint"]))
         return now
 
+    # ---- NEAR ----
+    def check_near(self, chain, addr, label, prev):
+        acc = addr.lower()
+        q = lambda kind: self.rpc(NEAR_RPC, "query", {"request_type": kind, "finality": "final", "account_id": acc})
+        bal = int(q("view_account")["amount"])
+        keys = {}
+        for k in q("view_access_key_list")["keys"]:
+            perm = k["access_key"]["permission"]
+            keys[k["public_key"]] = "full" if perm == "FullAccess" else str(perm.get("FunctionCall", {}).get("receiver_id", "?"))
+        now = {"bal": bal, "keys": keys}
+        if prev is None:
+            return now
+        if bal < prev["bal"]:
+            self.say("drop", 5, label=label, chain="NEAR", sym="NEAR", a=fmt(prev["bal"], 24), b=fmt(bal, 24))
+        for pk, kind in keys.items():
+            if pk in prev.get("keys", {}):
+                continue
+            if kind == "full":
+                self.say("near_full", 5, label=label)
+            else:
+                self.say("near_fn", 4, label=label, to=short(kind))
+        return now
+
+    # ---- Zcash（透明アドレス） ----
+    def check_zec(self, chain, addr, label, prev):
+        j = self.http(ZEC_API + addr)
+        d = (j.get("data") or {}).get(addr) or next(iter((j.get("data") or {}).values()), None)
+        if not d:
+            raise RuntimeError("no data")
+        bal = int(d["address"]["balance"])
+        now = {"bal": bal}
+        if prev is not None and bal < prev["bal"]:
+            self.say("drop", 5, label=label, chain="Zcash", sym="ZEC", a=fmt(prev["bal"], 8), b=fmt(bal, 8))
+        return now
+
+    # ---- Kaspa ----
+    def check_kaspa(self, chain, addr, label, prev):
+        j = self.http(f"{KAS_API}/addresses/{addr}/balance")
+        bal = int(j["balance"])
+        now = {"bal": bal}
+        if prev is not None and bal < prev["bal"]:
+            self.say("drop", 5, label=label, chain="Kaspa", sym="KAS", a=fmt(prev["bal"], 8), b=fmt(bal, 8))
+        return now
+
     def run(self):
         st = self.state
         addrs = st.setdefault("addrs", {})
         for i, line in self.bad:
             self.say("bad", 3, n=i, line=line)
+        for line in self.shielded:
+            self.say("shielded", 3, line=line)
         first = not st.get("started")
         ok = 0
         for chain, addr, label in self.items:
             key = f"{chain}:{addr.lower()}"
             rec = addrs.get(key, {})
-            fn = self.check_evm if chain in EVM else self.check_btc if chain == "btc" else self.check_solana
+            fn = self.check_evm if chain in EVM else {"btc": self.check_btc, "solana": self.check_solana, "near": self.check_near, "zec": self.check_zec, "kaspa": self.check_kaspa}[chain]
             try:
                 rec["s"] = fn(chain, addr, label, rec.get("s"))
                 rec["fails"] = 0
@@ -273,6 +331,21 @@ def ntfy_sender(topic, net=http):
     return send
 
 
+def kaspa_sample():
+    """自己診断用に、最新のブロックから実在するKaspaのアドレスを1つ拾う。"""
+    try:
+        tip = http(f"{KAS_API}/info/blockdag")["tipHashes"][0]
+        blk = http(f"{KAS_API}/blocks/{tip}?includeTransactions=true")
+        for tx in blk.get("transactions", []):
+            for out in tx.get("outputs", []):
+                a = out.get("verboseData", {}).get("scriptPublicKeyAddress") or out.get("script_public_key_address")
+                if a:
+                    return a
+    except Exception as e:
+        print("kaspa sample failed:", e)
+    return "kaspa:unknown"
+
+
 def selftest():
     """公開されている有名なアドレスで、各チェーンのデータが取れるかだけを確かめる（通知は送らない）。"""
     lines = "\n".join([
@@ -282,6 +355,9 @@ def selftest():
         "bsc 0x0000000000000000000000000000000000000001 test",
         "btc 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa test",
         "solana 11111111111111111111111111111111 test",
+        "near near test",
+        "zec t1WT7Mfa3BEHhs2cS63ZBusybeVntsHGNHF test",
+        "kaspa " + kaspa_sample() + " test",
     ])
     state = {}
     for _ in range(2):  # 1回目で基準を作り、2回目で差分の確認（ログの取得）まで動かす
