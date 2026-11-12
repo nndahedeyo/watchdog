@@ -131,7 +131,7 @@ class Watchdog:
 
     def rpc(self, urls, method, params):
         """取得元を順に試し、混み合っていれば少し待ってやり直す。"""
-        first = None
+        first, errs = None, {}
         for attempt in range(3):
             for url in ([urls] if isinstance(urls, str) else urls):
                 if self.http is http:
@@ -143,8 +143,11 @@ class Watchdog:
                     return j["result"]
                 except Exception as e:
                     first = first or e
+                    errs[url.split("/")[2]] = f"{type(e).__name__}: {e}"[:90]
             if self.http is http:
                 time.sleep(5 * (attempt + 1))
+        if self.verbose and len(errs) > 1:
+            raise RuntimeError(" | ".join(f"{k}: {v}" for k, v in errs.items()))
         raise first
 
     def logs(self, urls, lo, hi, topics):
@@ -370,7 +373,7 @@ def selftest():
         "bsc 0x0000000000000000000000000000000000000001 test",
         "btc 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa test",
         "solana 11111111111111111111111111111111 test",
-        "near near test",
+        "near wrap.near test",
         "zec t1WT7Mfa3BEHhs2cS63ZBusybeVntsHGNHF test",
         "kaspa " + kaspa_sample() + " test",
     ])
