@@ -25,7 +25,7 @@ EVM = {
     "ethereum": {"rpc": ["https://ethereum-rpc.publicnode.com", "https://eth.drpc.org"], "logs_rpc": ["https://eth.drpc.org", "https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com"], "sym": "ETH", "scan": "https://etherscan.io", "chunk": 2000, "lookback": 2000},
     "arbitrum": {"rpc": ["https://arbitrum-one-rpc.publicnode.com", "https://arb1.arbitrum.io/rpc"], "logs_rpc": ["https://arbitrum-one-rpc.publicnode.com", "https://arbitrum.drpc.org", "https://arb1.arbitrum.io/rpc"], "sym": "ETH", "scan": "https://arbiscan.io", "chunk": 10000, "lookback": 40000},
     "base": {"rpc": ["https://base-rpc.publicnode.com", "https://base.drpc.org", "https://mainnet.base.org"], "logs_rpc": ["https://base.drpc.org", "https://mainnet.base.org", "https://base-rpc.publicnode.com"], "sym": "ETH", "scan": "https://basescan.org", "chunk": 5000, "lookback": 10000},
-    "bsc": {"rpc": ["https://bsc-rpc.publicnode.com", "https://bsc.drpc.org", "https://bsc-dataseed.bnbchain.org"], "logs_rpc": ["https://bsc.drpc.org", "https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com"], "sym": "BNB", "scan": "https://bscscan.com", "chunk": 5000, "lookback": 10000},
+    "bsc": {"rpc": ["https://bsc-rpc.publicnode.com", "https://bsc.drpc.org", "https://bsc-dataseed.bnbchain.org"], "logs_rpc": ["https://bsc.drpc.org", "https://binance.llamarpc.com", "https://1rpc.io/bnb", "https://bsc.blockpi.network/v1/rpc/public"], "sym": "BNB", "scan": "https://bscscan.com", "chunk": 5000, "lookback": 10000},
 }
 SOLANA_RPC = ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]
 SPL_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]
