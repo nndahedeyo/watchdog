@@ -20,7 +20,7 @@ class Net:
     def __call__(self, url, body=None, headers=None):
         if url.startswith(check.BTC_API):
             return self.btc
-        if url.startswith(check.ZEC_API):
+        if "blockchair" in url:
             return {"data": {"t1zec": {"address": {"balance": self.zec}}}}
         if url.startswith(check.KAS_API):
             return {"address": "kaspa:x", "balance": self.kas}

@@ -22,16 +22,20 @@ APPROVAL_ALL = "0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c
 MAX_UINT = (1 << 256) - 1
 
 EVM = {
-    "ethereum": {"rpc": ["https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com"], "sym": "ETH", "scan": "https://etherscan.io", "chunk": 2000, "lookback": 2000},
-    "arbitrum": {"rpc": ["https://arbitrum-one-rpc.publicnode.com", "https://arb1.arbitrum.io/rpc"], "sym": "ETH", "scan": "https://arbiscan.io", "chunk": 10000, "lookback": 40000},
-    "base": {"rpc": ["https://base-rpc.publicnode.com", "https://base.drpc.org", "https://mainnet.base.org"], "sym": "ETH", "scan": "https://basescan.org", "chunk": 5000, "lookback": 10000},
-    "bsc": {"rpc": ["https://bsc-rpc.publicnode.com", "https://bsc.drpc.org", "https://bsc-dataseed.bnbchain.org"], "sym": "BNB", "scan": "https://bscscan.com", "chunk": 5000, "lookback": 10000},
+    "ethereum": {"rpc": ["https://ethereum-rpc.publicnode.com", "https://eth.drpc.org"], "logs_rpc": ["https://eth.drpc.org", "https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com"], "sym": "ETH", "scan": "https://etherscan.io", "chunk": 2000, "lookback": 2000},
+    "arbitrum": {"rpc": ["https://arbitrum-one-rpc.publicnode.com", "https://arb1.arbitrum.io/rpc"], "logs_rpc": ["https://arbitrum-one-rpc.publicnode.com", "https://arbitrum.drpc.org", "https://arb1.arbitrum.io/rpc"], "sym": "ETH", "scan": "https://arbiscan.io", "chunk": 10000, "lookback": 40000},
+    "base": {"rpc": ["https://base-rpc.publicnode.com", "https://base.drpc.org", "https://mainnet.base.org"], "logs_rpc": ["https://base.drpc.org", "https://mainnet.base.org", "https://base-rpc.publicnode.com"], "sym": "ETH", "scan": "https://basescan.org", "chunk": 5000, "lookback": 10000},
+    "bsc": {"rpc": ["https://bsc-rpc.publicnode.com", "https://bsc.drpc.org", "https://bsc-dataseed.bnbchain.org"], "logs_rpc": ["https://bsc.drpc.org", "https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com"], "sym": "BNB", "scan": "https://bscscan.com", "chunk": 5000, "lookback": 10000},
 }
 SOLANA_RPC = ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]
 SPL_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]
 BTC_API = "https://mempool.space/api/address/"
-NEAR_RPC = ["https://rpc.mainnet.fastnear.com", "https://rpc.mainnet.near.org"]
-ZEC_API = "https://api.blockchair.com/zcash/dashboards/address/"
+NEAR_RPC = ["https://free.rpc.fastnear.com", "https://near.drpc.org", "https://rpc.intea.rs"]
+ZEC_SOURCES = [  # 順に試す。どれかが取れればよい
+    ("https://api.blockchair.com/zcash/dashboards/address/{a}", lambda j, a: (j.get("data") or {})[a]["address"]["balance"]),
+    ("https://sandbox-api.3xpl.com/zcash/address/{a}?data=balances", lambda j, a: j["data"]["balances"]["zcash-main"]["zcash"]["balance"]),
+    ("https://api.mainnet.cipherscan.app/api/address/{a}", lambda j, a: j.get("balance", j.get("data", {}).get("balance"))),
+]
 KAS_API = "https://api.kaspa.org"
 NTFY = "https://ntfy.sh/"
 HEARTBEAT_DAYS = 7
@@ -176,7 +180,7 @@ class Watchdog:
         out_n = in_n = 0
         for lo in range(start, latest + 1, c["chunk"]):
             hi = min(lo + c["chunk"] - 1, latest)
-            for log in self.logs(c["rpc"], lo, hi, [[APPROVAL, APPROVAL_ALL], topic]):
+            for log in self.logs(c.get("logs_rpc", c["rpc"]), lo, hi, [[APPROVAL, APPROVAL_ALL], topic]):
                 spender = "0x" + log["topics"][2][-40:] if len(log["topics"]) > 2 else "?"
                 if log["topics"][0] == APPROVAL_ALL:
                     if int(log.get("data") or "0x0", 16):
@@ -187,9 +191,9 @@ class Watchdog:
                 if val:
                     amt = self.t["unlimited"] if val >= MAX_UINT // 2 else self.t["some"]
                     self.say("approve", 5, label=label, chain=chain, spender=short(spender), token=short(log["address"]), amt=amt)
-            out_n += len(self.logs(c["rpc"], lo, hi, [TRANSFER, topic]))
+            out_n += len(self.logs(c.get("logs_rpc", c["rpc"]), lo, hi, [TRANSFER, topic]))
             try:  # 迷惑な着金が多すぎるアドレスでは数えきれないことがある。見張りの本体は止めない
-                in_n += len(self.logs(c["rpc"], lo, hi, [TRANSFER, None, topic]))
+                in_n += len(self.logs(c.get("logs_rpc", c["rpc"]), lo, hi, [TRANSFER, None, topic]))
             except Exception:
                 pass
         if out_n:
@@ -263,11 +267,17 @@ class Watchdog:
 
     # ---- Zcash（透明アドレス） ----
     def check_zec(self, chain, addr, label, prev):
-        j = self.http(ZEC_API + addr)
-        d = (j.get("data") or {}).get(addr) or next(iter((j.get("data") or {}).values()), None)
-        if not d:
-            raise RuntimeError("no data")
-        bal = int(d["address"]["balance"])
+        bal, first = None, None
+        for url, pick in ZEC_SOURCES:
+            try:
+                v = pick(self.http(url.format(a=addr)), addr)
+                if v is not None:
+                    bal = int(v)
+                    break
+            except Exception as e:
+                first = first or e
+        if bal is None:
+            raise first or RuntimeError("no data")
         now = {"bal": bal}
         if prev is not None and bal < prev["bal"]:
             self.say("drop", 5, label=label, chain="Zcash", sym="ZEC", a=fmt(prev["bal"], 8), b=fmt(bal, 8))
