@@ -49,7 +49,16 @@ kaspa kaspa:qq...abc KAS保管
 2. 左の「watch」→ 右の「Run workflow」
 3. 1分ほどで、ntfyに「見張りを始めました」が届けば完了
 
-以後は1時間ごとに自動で動きます。費用はかかりません（非公開のコピーでも、GitHubの無料枠に収まります）。
+以後は1時間ごとに自動で動きます。費用はかかりません。
+
+### GitHubの無料枠について
+
+非公開のコピーでは、GitHubの無料枠（月2,000分ほど）を使います。1時間ごとだと月に約720回動き、1回は1分単位で切り上げて数えるので、月720〜1,440分ほどになり、ふつうは枠に収まります。
+
+- 支払い方法を登録していなければ、枠を超えても**お金はかかりません**。そこで見張りが止まるだけです
+- 止まると、毎週の「異常なし」が届かなくなります。届かなくなったら止まった合図です
+- 始めて1週間たったら、右上のアイコン →「Settings」→「Billing and licensing」で使った分数を一度見ておくと安心です
+- 枠が心配なら、`.github/workflows/watch.yml` の `cron: "7 * * * *"` を `cron: "7 */2 * * *"` に変えると2時間ごとになり、使う分数が半分になります（そのぶん気づくのは遅くなります）
 
 ## 英語で通知を受け取る
 
@@ -68,6 +77,6 @@ About 15 minutes. You need a free GitHub account and a phone.
 1. **Notifications**: install **ntfy**, pick a long, hard-to-guess topic name (anyone who knows it can read your alerts) and subscribe to it.
 2. **Your copy**: open `nndahedeyo/watchdog`, click **Use this template** → "Create a new repository", and make it **Private**.
 3. **Secrets**: in your copy, Settings → Secrets and variables → Actions → New repository secret. Add `NTFY_TOPIC` (your topic) and `WATCHDOG_ADDRESSES`, one line per address: `chain address name`. Chains: `ethereum` `arbitrum` `base` `bsc` `btc` `solana` `near` `zec` `kaspa` (ZEC: transparent t1/t3 addresses only; NEAR: account ID). Public addresses only. Never enter private keys or recovery phrases. Names appear in alerts, so keep them non-personal.
-4. **Start**: open Actions (enable workflows if asked), choose "watch" → Run workflow. You should get "Watchdog started" within a minute. It then runs every hour, within GitHub's free allowance.
+4. **Start**: open Actions (enable workflows if asked), choose "watch" → Run workflow. You should get "Watchdog started" within a minute. It then runs every hour (about 720–1,440 of the roughly 2,000 free private-repo minutes per month). Without a payment method, going over just stops the runs at no cost; the weekly all-clear stops arriving. To halve usage, change the cron to `7 */2 * * *`.
 
 For English alerts, add a Variable `WATCHDOG_LANG` = `en`. To stop, disable the "watch" workflow or delete your copy.
